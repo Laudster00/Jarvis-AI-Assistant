@@ -1,14 +1,25 @@
 import google.generativeai as genai
 from flask import Flask, request, render_template_string
 import pyttsx3
+import os
+import sys
+import winreg as reg # Biblioteca para mexer no Registro do Windows
 
-# --- 1. CONFIGURAÇÃO ---
-CHAVE_NOVA = "COLOQUE SUA CHAVE AQUI" 
+# --- CONFIGURAÇÃO DA INICIALIZAÇÃO AUTOMÁTICA ---
+def add_to_startup():
+    # Pega o caminho do arquivo atual (seja .py ou .exe)
+    path = os.path.realpath(sys.executable if getattr(sys, 'frozen', False) else __file__)
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    try:
+        key = reg.OpenKey(reg.HKEY_CURRENT_USER, key_path, 0, reg.KEY_SET_VALUE)
+        reg.SetValueEx(key, "JarvisSystem", 0, reg.REG_SZ, path)
+        reg.CloseKey(key)
+    except Exception as e:
+        print(f"Erro ao configurar inicialização: {e}")
 
+# --- CONFIGURAÇÃO IA ---
+CHAVE_NOVA = "SUA CHAVE" 
 genai.configure(api_key=CHAVE_NOVA)
-
-# IMPORTANTE: Se o 2.0 continuar negando por cota, 
-# você pode trocar para 'gemini-1.5-flash' aqui embaixo
 model = genai.GenerativeModel('gemini-2.0-flash') 
 
 app = Flask(__name__)
@@ -22,7 +33,7 @@ def falar(texto):
     except:
         pass
 
-# --- INTERFACE VISUAL ---
+# --- INTERFACE VISUAL (Mantida a mesma) ---
 HTML_PAGINA = """
 <!DOCTYPE html>
 <html>
@@ -69,23 +80,36 @@ def home():
 
 @app.route('/jarvis')
 def jarvis_ia():
-    pergunta = request.args.get('pergunta')
+    pergunta = request.args.get('pergunta', '').lower()
     if not pergunta: return "Sem comando."
+    
+    if "calculadora" in pergunta:
+        os.system("calc")
+        msg = "Abrindo a calculadora, senhor."
+        falar(msg)
+        return f"<b>JARVIS LOCAL:</b> {msg}"
+    
+    if "bloco de notas" in pergunta or "notepad" in pergunta:
+        os.system("notepad")
+        msg = "Iniciando o Bloco de Notas."
+        falar(msg)
+        return f"<b>JARVIS LOCAL:</b> {msg}"
+
     try:
-        # Gerando a resposta
         response = model.generate_content(f"Responda como o Jarvis: {pergunta}", 
                                         generation_config={"max_output_tokens": 100})
         resposta = response.text
-        
-        # O retorno para o site
         falar(resposta)
         return f"<b>JARVIS:</b> {resposta}"
         
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg:
-            return "<b>AVISO:</b> Limite de requisições atingido. Por favor, aguarde 60 segundos para o sistema resetar."
+            aviso = "Limite de cota atingido. Estou operando apenas com comandos locais no momento."
+            falar(aviso)
+            return f"<b>AVISO:</b> {aviso}"
         return f"<b>ERRO:</b> {error_msg}"
 
 if __name__ == '__main__':
+    add_to_startup() # Chama a função para garantir que inicie com o PC
     app.run(host='0.0.0.0', port=8000)
